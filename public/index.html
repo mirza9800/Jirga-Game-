@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JIRGA: Ultimate Council Edition</title>
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <style>
+        /* 🦇 DEEP DRACULA PREMIUM */
+        :root { 
+            --bg-deep: #0f0f17; --bg-main: #1a1b26; --purple: #bd93f9; --purple-glow: rgba(189, 147, 249, 0.4);
+            --text: #f8f8f2; --comment: #6272a4; --red: #ff5555; --green: #50fa7b; --cyan: #8be9fd;
+            --glass: rgba(26, 27, 38, 0.85); --glass-border: 1px solid rgba(189, 147, 249, 0.2);
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: radial-gradient(circle at 70% 10%, #2d1b4d 0%, var(--bg-deep) 100%); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+
+        /* 🧊 UI COMPONENTS */
+        #leaderboard { width: 260px; background: var(--glass); backdrop-filter: blur(30px); border-right: var(--glass-border); display: flex; flex-direction: column; z-index: 10; box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
+        
+        #main-content { flex-grow: 1; position: relative; overflow-y: auto; display: flex; flex-direction: column; }
+        
+        /* Ensures only one phase is visible properly */
+        .phase { display: none; flex-direction: column; align-items: center; justify-content: flex-start; width: 100%; min-height: 100%; padding: 40px 20px; box-sizing: border-box; }
+        .active { display: flex; animation: popInSoft 0.4s forwards; }
+
+        .card { background: var(--glass); backdrop-filter: blur(30px); padding: 30px 25px; border-radius: 20px; width: 100%; max-width: 500px; border: var(--glass-border); text-align: center; box-shadow: 0 15px 40px rgba(0,0,0,0.4), inset 0 0 15px var(--purple-glow); margin: auto; }
+        @keyframes popInSoft { 0% { opacity: 0; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+
+        /* BUTTONS */
+        .menu-btn { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 2px solid var(--purple); background: transparent; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 13px; letter-spacing: 1px; }
+        .menu-btn.primary { background: linear-gradient(135deg, var(--purple), #9a66d4); border: none; box-shadow: 0 4px 12px var(--purple-glow); }
+        .menu-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+        .menu-btn:active:not(:disabled) { transform: scale(0.95); }
+        .menu-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* AVATARS */
+        .avatar-img-small { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; margin-right: 5px; }
+        .avatar-img-large { width: 80px; height: 80px; object-fit: contain; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.5)); }
+
+        /* CHAT & SIDEBAR LIST */
+        #playersList { max-height: 35%; overflow-y: auto; padding: 10px; border-bottom: var(--glass-border); }
+        .player-card { display: flex; align-items: center; padding: 8px 10px; border-radius: 10px; margin-bottom: 6px; font-size: 12px; background: rgba(0,0,0,0.3); transition: 0.3s; }
+        #chat-area { flex-grow: 1; overflow-y: auto; padding: 10px; font-size: 12px; }
+        .chat-msg { margin-bottom: 8px; line-height: 1.4; color: #ddd; padding: 6px 10px; background: rgba(0,0,0,0.2); border-radius: 8px; width: fit-content; max-width: 90%; border-left: 3px solid var(--purple); }
+        #chat-input-row { display: flex; gap: 6px; margin-bottom: 10px; padding: 0 10px;}
+        #chat-input-row input { flex-grow: 1; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--comment); color: var(--text); border-radius: 8px; outline: none; transition: 0.3s; font-size: 12px;}
+        #chat-input-row input:focus { border-color: var(--purple); box-shadow: 0 0 10px var(--purple-glow); }
+
+        /* 🎨 3D EMOJIS */
+        .emoji-row { display: flex; justify-content: space-around; padding: 10px; background: rgba(0,0,0,0.3); border-top: var(--glass-border); }
+        .emoji-row button { background: none; border: none; cursor: pointer; transition: 0.2s; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+        .emoji-row button img { transition: transform 0.2s; }
+        .emoji-row button:hover img { transform: scale(1.3) rotate(5deg); }
+        .floating-emoji { position: fixed; pointer-events: none; z-index: 1000; animation: burst 1.8s ease-out forwards; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.6)); }
+        @keyframes burst { 0% { transform: scale(0) rotate(0); opacity: 0; bottom: 50px; } 15% { opacity: 1; transform: scale(1.2); } 100% { transform: scale(1) translateY(-300px); opacity: 0; } }
+
+        /* CATEGORIES SETUP GRID */
+        .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 15px 0; }
+        .cat-item { padding: 8px; background: rgba(0,0,0,0.3); border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: 0.3s; text-align: center; font-size: 12px; }
+        .cat-item:hover { background: var(--purple-glow); }
+        .selected { border-color: var(--purple); background: var(--purple-glow); }
+
+        /* 🏆 JIRGA VOTING UI */
+        #inputArea input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--comment); color: var(--text); border-radius: 10px; margin-bottom: 8px; box-sizing: border-box; font-size: 16px; outline: none; transition: 0.3s; }
+        #inputArea input:focus { border-color: var(--purple); box-shadow: 0 0 10px var(--purple-glow); }
+        .vote-btn { flex: 1; border: none; padding: 8px; border-radius: 8px; font-weight: 700; cursor: pointer; transition: 0.2s; font-size:10px; text-transform: uppercase; letter-spacing: 1px; }
+        .vote-btn:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        .vote-btn:disabled { opacity: 0.3 !important; cursor: not-allowed; transform: none; box-shadow: none; }
+        .jirga-box { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 12px; margin-bottom: 12px; text-align: left; transition: 0.4s; }
+
+        /* 🚨 PANIC */
+        .panic-timer { animation: flashRed 0.6s infinite alternate ease-in-out; border-radius: 8px; padding: 4px 10px; }
+        @keyframes flashRed { 0% { background: rgba(255, 85, 85, 0.1); color: var(--red); } 100% { background: var(--red); color: white; transform: scale(1.1); box-shadow: 0 0 15px var(--red); } }
+
+        /* 💩 END SCREEN & SHAME */
+        #endScreen { position: fixed; inset: 0; z-index: 9999; background: rgba(15,15,23,0.95); backdrop-filter: blur(20px); display: flex; flex-direction: column; align-items: center; justify-content: center; animation: fadeIn 1s forwards; overflow-y: auto; padding: 40px; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .podium-block { display: flex; flex-direction: column; align-items: center; border-radius: 15px 15px 0 0; position: relative; animation: slideUpPodium 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes slideUpPodium { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .shame-shake { animation: shameShake 0.5s infinite; filter: grayscale(100%) contrast(1.2); }
+        @keyframes shameShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px) rotate(-3deg); } 75% { transform: translateX(4px) rotate(3deg); } }
+        .dunce-cap { position: absolute; top: -35px; font-size: 30px; filter: drop-shadow(0 0 10px rgba(0,0,0,0.8)); z-index: 10; }
+        .confetti-3d { position: fixed; pointer-events: none; animation: fall 3s linear forwards; z-index: 10000; }
+        @keyframes fall { to { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="leaderboard" class="hidden">
+        <div style="padding: 15px; text-align: center; background: rgba(0,0,0,0.2); border-bottom: var(--glass-border);">
+            <h2 style="color: var(--purple); margin: 0; letter-spacing: 2px; font-size: 18px; text-shadow: 0 0 10px var(--purple-glow);">JIRGA</h2>
+            <div style="font-size: 11px; color: var(--comment); margin-top: 5px; cursor: pointer;" onclick="copyInvite()">ROOM: <b id="displayCode" style="color:white;">---</b> 📋</div>
+        </div>
+        <div id="playersList"></div>
+        <div id="chat-area"></div>
+        <div id="chat-input-row">
+            <input type="text" id="chatInput" placeholder="Message village..." onkeydown="if(event.key==='Enter') sendChat()">
+            <button onclick="sendChat()" style="background:var(--purple); border:none; color:#1e1f29; border-radius:8px; padding:0 12px; cursor:pointer; font-weight:bold; font-size: 11px;">Send</button>
+        </div>
+        <div class="emoji-row">
+            <button onclick="triggerEmoji('laugh')"><img src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f923.png" width="28"></button>
+            <button onclick="triggerEmoji('fire')"><img src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f525.png" width="28"></button>
+            <button onclick="triggerEmoji('clap')"><img src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f44f.png" width="28"></button>
+            <button onclick="triggerEmoji('cry')"><img src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f62d.png" width="28"></button>
+        </div>
+    </div>
+
+    <div id="main-content">
+        
+        <div id="menuPhase" class="phase active">
+            <div class="card">
+                <h1 style="font-size: 48px; margin: 0; color: var(--purple); text-shadow: 0 0 20px var(--purple-glow); letter-spacing: 3px;">JIRGA</h1>
+                <p style="color: var(--comment); letter-spacing: 1px; margin-bottom: 25px; font-size: 13px;">THE VILLAGE COUNCIL</p>
+                <button class="menu-btn primary" onclick="showSetup(true)">CREATE COUNCIL</button>
+                <button class="menu-btn" onclick="showSetup(false)">JOIN COUNCIL</button>
+                <button class="menu-btn" style="border-color: var(--comment); color: var(--comment);" onclick="document.getElementById('rulesModal').classList.remove('hidden')">HOW TO PLAY</button>
+            </div>
+        </div>
+
+        <div id="setupPhase" class="phase">
+            <div class="card">
+                <h2 style="color: var(--purple); margin-top:0; font-size: 20px;">SETUP COUNCIL</h2>
+                
+                <div id="profileSetupRow">
+                    <input type="text" id="pName" placeholder="Type Your Name Here..." style="width:100%; padding:14px; background:rgba(255,255,255,0.05); border:2px solid var(--purple); color:white; border-radius:10px; margin-bottom:10px; box-sizing:border-box; outline:none; font-weight:bold; font-size: 14px;">
+                    <div id="joinOnly" class="hidden"><input type="text" id="joinID" placeholder="Room Code..." style="width:100%; padding:14px; background:rgba(0,0,0,0.3); border:1px solid var(--comment); color:white; border-radius:10px; margin-top:5px; box-sizing:border-box; outline:none; font-size: 14px;"></div>
+                </div>
+                
+                <div id="hostSettingsRow" class="hidden">
+                    <div style="background:rgba(0,0,0,0.2); border: var(--glass-border); padding:15px; border-radius:10px; margin:15px 0; text-align:left;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 5px;">
+                            <small style="color:var(--comment); letter-spacing: 1px;">TIMER: <span id="tVal" style="color:var(--purple); font-weight:bold; font-size: 13px;">30s</span></small>
+                            <small style="color:var(--comment); letter-spacing: 1px;">ROUNDS: <span id="rVal" style="color:var(--purple); font-weight:bold; font-size: 13px;">3</span></small>
+                        </div>
+                        <div style="display:flex; gap:15px; align-items:center;">
+                            <input type="range" id="timerSet" min="15" max="120" value="30" oninput="document.getElementById('tVal').innerText=this.value+'s'" style="width:100%; accent-color: var(--purple);">
+                            <input type="range" id="roundSet" min="1" max="10" value="3" oninput="document.getElementById('rVal').innerText=this.value" style="width:100%; accent-color: var(--purple);">
+                        </div>
+                    </div>
+                    <small style="color:var(--comment); letter-spacing: 1px; font-size: 11px;">SELECT CATEGORIES:</small>
+                    <div class="cat-grid">
+                        <div class="cat-item selected" onclick="this.classList.toggle('selected')">Naam</div>
+                        <div class="cat-item selected" onclick="this.classList.toggle('selected')">Jagah</div>
+                        <div class="cat-item selected" onclick="this.classList.toggle('selected')">Janwar</div>
+                        <div class="cat-item selected" onclick="this.classList.toggle('selected')">Cheez</div>
+                        <div class="cat-item" onclick="this.classList.toggle('selected')">Film</div>
+                        <div class="cat-item" onclick="this.classList.toggle('selected')">Phal</div>
+                        <div class="cat-item" onclick="this.classList.toggle('selected')">Sabzi</div>
+                    </div>
+                </div>
+
+                <button id="firstJoinBtn" class="menu-btn primary" onclick="enterRoom()" style="margin-top: 10px;">ENTER LOBBY</button>
+                <button id="updateSettingsBtn" class="menu-btn primary hidden" onclick="saveNewSettings()" style="margin-top: 10px;">UPDATE & RETURN TO LOBBY</button>
+            </div>
+        </div>
+
+        <div id="waitingPhase" class="phase">
+            <div class="card">
+                <h2 id="waitingTitle" style="color: var(--purple); font-size: 20px;">WAITING ROOM</h2>
+                <div id="hostControls"></div>
+            </div>
+        </div>
+
+        <div id="playPhase" class="phase">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; width:100%; color:var(--comment); font-weight:bold; align-items:center; font-size: 12px;">
+                    <span>BATTLE LIVE</span>
+                    <span id="timerDisplay" style="color:var(--purple); font-size:18px; transition: 0.3s;">30s</span>
+                </div>
+                <h1 id="activeLetter" style="font-size:75px; margin:10px 0; color:white; text-shadow: 0 0 20px var(--purple);">A</h1>
+                <div id="inputArea" style="width:100%;"></div>
+                <button id="submitBtn" class="menu-btn primary" onclick="initiatePanic(false)" style="margin-top: 10px;">SUBMIT ANSWERS</button>
+            </div>
+        </div>
+        
+        <div id="jirgaPhase" class="phase">
+            <div class="card" style="max-width: 600px;">
+                <div id="jirgaReview"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="rulesModal" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:10000; display:flex; align-items:center; justify-content:center;">
+        <div class="card" style="text-align:left; max-width: 450px;">
+            <h2 style="color:var(--purple); margin-top:0; border-bottom:1px solid var(--comment); padding-bottom:10px; font-size: 18px;">📜 HOW TO PLAY</h2>
+            <ul style="color:var(--text); line-height:1.6; padding-left:20px; font-size: 13px;">
+                <li style="margin-bottom:8px;"><b>Phase 1 (Panic):</b> A random letter appears. Quickly fill out all categories!</li>
+                <li style="margin-bottom:8px;"><b>Phase 2 (Jirga):</b> Players are judged one by one. The Host locks the final score.</li>
+                <li style="margin-bottom:8px;"><b>Phase 3 (Suggest):</b> Tell the judge your opinion (Sahi = 10, Shapar = 5, Galat = 0).</li>
+                <li><b>Villagers (Spectators):</b> If you join after a round starts, you watch the fun until the next round!</li>
+            </ul>
+            <button class="menu-btn primary" style="margin-top:15px;" onclick="document.getElementById('rulesModal').classList.add('hidden')">GOT IT!</button>
+        </div>
+    </div>
+
+    <div id="endScreen" class="hidden">
+        <h1 style="color:var(--purple); font-size:40px; text-shadow:0 0 20px var(--purple-glow); margin-bottom:5px; text-align:center;">COUNCIL DISMISSED</h1>
+        <div id="podiumContainer" style="display:flex; align-items:flex-end; gap:12px; height:180px; margin-bottom:30px; margin-top:20px;"></div>
+        <div id="remainingPlayers" style="width:100%; max-width:300px; max-height:180px; overflow-y:auto; padding:15px; background:rgba(0,0,0,0.3); border-radius:12px;"></div>
+        <div id="endScreenBtns" style="display:flex; flex-direction:column; align-items:center;"></div>
+    </div>
+
+    <script>
+        const socket = io(); 
+        
+        let player = { name: "", avatar: "", color: "", isHost: false, score: 0, isReady: false, isSpectator: false };
+        let selectedCats = []; let audioCtx; let timerInterval; let isPanicMode = false; let currentRoomID = ""; let lockedCount = 0; 
+        let currentRoundCatCount = 0; 
+        let isHostSettingUp = false; 
+
+        const emojiAssets = {
+            laugh: { img: 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f923.png', snd: 'https://upload.wikimedia.org/wikipedia/commons/4/4d/Laugh_short.ogg' },
+            fire: { img: 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f525.png', snd: 'https://upload.wikimedia.org/wikipedia/commons/d/d9/Fire_Whoosh_Sound.ogg' },
+            clap: { img: 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f44f.png', snd: 'https://upload.wikimedia.org/wikipedia/commons/1/15/Audience_Applause.ogg' },
+            cry: { img: 'https://cdn.jsdelivr.net/npm/emoji-datasource-apple@14.0.0/img/apple/64/1f62d.png', snd: 'https://upload.wikimedia.org/wikipedia/commons/d/d5/Sad_Trombone.ogg' }
+        };
+
+        // UI HELPERS to clean up phases preventing overlaps
+        function hideAllPhases() {
+            document.querySelectorAll('.phase').forEach(el => el.classList.remove('active'));
+        }
+
+        function showSetup(isHost) {
+            player.isHost = isHost;
+            hideAllPhases();
+            document.getElementById('setupPhase').classList.add('active');
+            
+            document.getElementById('profileSetupRow').classList.remove('hidden');
+            document.getElementById('joinOnly').classList.toggle('hidden', isHost);
+            document.getElementById('hostSettingsRow').classList.toggle('hidden', !isHost);
+            
+            document.getElementById('firstJoinBtn').classList.remove('hidden');
+            document.getElementById('updateSettingsBtn').classList.add('hidden');
+            
+            setTimeout(() => document.getElementById('pName').focus(), 100);
+        }
+
+        function copyInvite() {
+            const link = window.location.origin + "?room=" + currentRoomID;
+            navigator.clipboard.writeText(link);
+            alert("Invite Link Copied:\n" + link);
+        }
+
+        function enterRoom() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            player.name = document.getElementById('pName').value.trim() || "Guest";
+
+            let gameRounds = 1;
+            if(player.isHost) {
+                selectedCats = [];
+                document.querySelectorAll('.cat-item.selected').forEach(el => selectedCats.push(el.innerText));
+                gameRounds = parseInt(document.getElementById('roundSet').value) || 1;
+            }
+            
+            currentRoomID = player.isHost ? Math.random().toString(36).substring(2,7).toUpperCase() : document.getElementById('joinID').value.toUpperCase();
+            
+            socket.emit('joinRoom', { 
+                roomID: currentRoomID, name: player.name, isHost: player.isHost, 
+                categories: selectedCats, totalRounds: gameRounds 
+            });
+
+            hideAllPhases();
+            document.getElementById('waitingPhase').classList.add('active');
+            document.getElementById('leaderboard').classList.remove('hidden');
+            document.getElementById('displayCode').innerText = currentRoomID;
+        }
+
+        socket.on('updatePlayerList', (serverPlayers) => {
+            const list = document.getElementById('playersList');
+            list.innerHTML = ''; 
+            
+            let maxScore = -1;
+            serverPlayers.forEach(p => { if (p.score > maxScore) maxScore = p.score; });
+            
+            let maxScoreCount = 0;
+            serverPlayers.forEach(p => { if (p.score === maxScore && maxScore > 0) maxScoreCount++; });
+            
+            let me = serverPlayers.find(p => p.socketId === socket.id);
+            if(me) { 
+                player.isSpectator = me.isSpectator;
+                player.avatar = me.avatar;
+                player.color = me.color;
+            }
+
+            let activePlayers = serverPlayers.filter(p => !p.isSpectator);
+            let allReady = activePlayers.filter(p => !p.isHost).every(p => p.isReady);
+
+            serverPlayers.forEach(p => {
+                const isWinner = (p.score === maxScore && maxScore > 0 && maxScoreCount === 1);
+                const crownHtml = isWinner ? '<span style="font-size:22px; margin-left:5px; filter: drop-shadow(0 0 8px gold);">👑</span>' : '';
+                let statusEmoji = p.isSpectator ? '👁️' : (p.isHost ? '🛡️' : (p.isReady ? '✅' : '⏳'));
+
+                list.innerHTML += `
+                    <div class="player-card" style="border-left: 3px solid ${p.color};">
+                        <img src="${p.avatar}" class="avatar-img-small">
+                        <span style="color: white; font-weight: 600;">${p.name} <span style="font-size:12px; margin-left:3px;">${statusEmoji}</span> ${crownHtml}</span>
+                        <span style="margin-left:auto; font-weight:bold; color:#1e1f29; background:${p.color}; padding:2px 8px; border-radius:8px; font-size:11px;">${p.score}</span>
+                    </div>
+                `;
+            });
+
+            let hostControls = document.getElementById('hostControls');
+            if (isHostSettingUp && !player.isHost) {
+                hostControls.innerHTML = `<p style="color:var(--cyan); font-style:italic;">Host is choosing categories for the new game...</p>`;
+            } else if (player.isSpectator) {
+                hostControls.innerHTML = `<p style="color:var(--cyan); font-style:italic;">You are a Villager (Spectator). The game is currently in progress!</p>`;
+            } else if (player.isHost) {
+                if (activePlayers.length > 1 && allReady) {
+                    hostControls.innerHTML = `<button class="menu-btn primary" onclick="launchGame()">ALL READY - START ROUND 🚀</button>`;
+                } else {
+                    hostControls.innerHTML = `<button class="menu-btn primary" disabled>WAITING FOR PLAYERS TO READY...</button>`;
+                }
+            } else {
+                if(me && me.isReady) {
+                    hostControls.innerHTML = `<button class="menu-btn" style="border-color:var(--green); background:var(--green); color:#1e1f29;" onclick="toggleReady()">READY ✅</button>`;
+                } else {
+                    hostControls.innerHTML = `<button class="menu-btn" style="border-color:var(--green); color:var(--green);" onclick="toggleReady()">I'M READY</button>`;
+                }
+            }
+        });
+
+        function toggleReady() { socket.emit('toggleReady', currentRoomID); }
+        function launchGame() {
+            const letters = "ABCDEFGHIJKLMNOPRSTUVW";
+            const chosenLetter = letters[Math.floor(Math.random() * letters.length)];
+            let timerVal = document.getElementById('timerSet').value;
+            socket.emit('hostStartedGame', { roomID: currentRoomID, letter: chosenLetter, timer: timerVal });
+        }
+
+        socket.on('playerJoinedChat', (friendData) => {
+            const chat = document.getElementById('chat-area');
+            chat.innerHTML += `<div class="chat-msg" style="border-left-color: ${friendData.color};"><i><img src="${friendData.avatar}" class="avatar-img-small"> <b style="color:${friendData.color};">${friendData.name}</b> joined!</i></div>`;
+            chat.scrollTop = chat.scrollHeight;
+        });
+
+        socket.on('playerLeftChat', (friendData) => {
+            const chat = document.getElementById('chat-area');
+            chat.innerHTML += `<div class="chat-msg" style="color:var(--red); border-color:var(--red);"><i><img src="${friendData.avatar}" class="avatar-img-small"> ${friendData.name} left.</i></div>`;
+            chat.scrollTop = chat.scrollHeight;
+        });
+
+        // 👁️ PLAY PHASE (Now with Bolder, Larger Category Labels)
+        socket.on('gameStarted', (data) => {
+            isPanicMode = false;
+            let letter = data.letter;
+            selectedCats = data.categories;
+            currentRoundCatCount = selectedCats.length; 
+
+            document.getElementById('timerDisplay').classList.remove('panic-timer');
+            
+            // 🛠️ BUG FIX: Cleanly hide ALL phases before showing Play Phase
+            hideAllPhases();
+            document.getElementById('playPhase').classList.add('active');
+            
+            document.getElementById('activeLetter').innerText = letter;
+
+            const area = document.getElementById('inputArea');
+            if (player.isSpectator) {
+                area.innerHTML = `<p style="color:var(--comment); font-style:italic;">You are spectating this round. Watch the panic unfold!</p>`;
+                if(document.getElementById('submitBtn')) document.getElementById('submitBtn').style.display = 'none';
+            } else {
+                if(document.getElementById('submitBtn')) document.getElementById('submitBtn').style.display = 'block';
+                area.innerHTML = selectedCats.map((cat, index) => `
+                    <div style="margin-bottom:12px; text-align:left;">
+                        <label style="font-size:14px; font-weight:bold; color:var(--purple); letter-spacing:1px; text-transform:uppercase; margin-left: 5px; display:block; margin-bottom: 5px;">${cat}</label>
+                        <input type="text" id="ans_${index}" placeholder="Type here..." onkeydown="handleEnter(event, ${index})">
+                    </div>
+                `).join('');
+                setTimeout(() => { const firstInput = document.getElementById('ans_0'); if(firstInput) firstInput.focus(); }, 100);
+            }
+            startTimer(data.timer); 
+        });
+
+        socket.on('panicStarted', () => { initiatePanic(true); });
+
+        // 🏛️ JIRGA VOTING LOGIC
+        socket.on('startVoting', (data) => {
+            let judgedPlayer = data.judgedPlayer;
+            let judgeId = data.judgeId;
+            let roomCats = data.categories;
+            
+            currentRoundCatCount = roomCats.length;
+            lockedCount = 0; 
+            
+            // Cleanly transition to Jirga
+            hideAllPhases();
+            document.getElementById('jirgaPhase').classList.add('active');
+
+            let html = `<h2 style="color:var(--purple); font-size:18px; margin:0; letter-spacing:2px;">🏛️ JIRGA COURT</h2>`;
+            html += `<div style="display:flex; align-items:center; justify-content:center; gap:15px; margin: 15px 0;">
+                        <img src="${judgedPlayer.avatar}" class="avatar-img-large">
+                        <div style="text-align:left;">
+                            <div style="font-size:26px; font-weight:bold; color:${judgedPlayer.color}; text-shadow: 0 0 15px ${judgedPlayer.color}80;">${judgedPlayer.name.toUpperCase()}</div>
+                            <div style="font-size:12px; color:var(--comment)">ON TRIAL</div>
+                        </div>
+                     </div>`;
+            
+            if (judgedPlayer.socketId === socket.id) {
+                html += `<p style="color:var(--red); font-size:11px; font-weight:bold; background: rgba(255,85,85,0.1); padding: 6px; border-radius: 6px;">Watch the Jirga decide your fate.</p>`;
+            } else if (socket.id === judgeId) {
+                html += `<p style="color:var(--green); font-size:11px; font-weight:bold; background: rgba(80, 250, 123, 0.1); padding: 6px; border-radius: 6px;">You are the Judge. Lock in the final scores.</p>`;
+            } else {
+                html += `<p style="color:var(--cyan); font-size:11px; font-weight:bold; background: rgba(139, 233, 253, 0.1); padding: 6px; border-radius: 6px;">${player.isSpectator ? "You are a Villager! " : ""}Give your opinion to the Judge!</p>`;
+            }
+
+            roomCats.forEach((cat, index) => {
+                let answerText = (judgedPlayer.answers && judgedPlayer.answers[cat]) ? judgedPlayer.answers[cat] : "--- NO ANSWER ---";
+                let isNoAnswer = answerText === "--- NO ANSWER ---";
+
+                html += `
+                    <div id="catBox_${index}" class="jirga-box" style="border-left-color: ${isNoAnswer ? 'var(--red)' : judgedPlayer.color}; background:rgba(255,255,255,0.03);">
+                        <div style="color:var(--purple); font-weight:bold; text-transform:uppercase; font-size:13px; letter-spacing: 1px; margin-bottom: 4px;">${cat}</div>
+                        <div style="font-size:20px; font-weight:600; margin:5px 0; color:${isNoAnswer ? 'var(--red)' : 'white'};">${answerText}</div>
+                        <div id="opinions_${index}" style="margin-bottom:8px; min-height:22px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+                        <div style="display:flex; gap:6px;">
+                `;
+
+                if (judgedPlayer.socketId === socket.id) {
+                    html += `<span style="color:var(--comment); font-size:11px; font-style:italic; opacity: 0.7;">The village is deliberating...</span>`;
+                } else if (socket.id === judgeId) {
+                    html += `
+                        <button id="btnSahi_${index}" class="vote-btn" style="background:var(--green); color:#1e1f29;" onclick="triggerLock('${judgedPlayer.socketId}', '${cat}', 10, ${index})">SAHI (10)</button>
+                        <button id="btnShapar_${index}" class="vote-btn" style="background:var(--cyan); color:#1e1f29;" onclick="triggerLock('${judgedPlayer.socketId}', '${cat}', 5, ${index})">SHAPAR (5)</button>
+                        <button id="btnGalat_${index}" class="vote-btn" style="background:var(--red); color:white;" onclick="triggerLock('${judgedPlayer.socketId}', '${cat}', 0, ${index})">GALAT (0)</button>
+                    `;
+                } else {
+                    html += `
+                        <button class="vote-btn" style="background:rgba(80, 250, 123, 0.15); color:var(--green); border: 1px solid var(--green);" onclick="sendSuggestion('${cat}', 'Sahi', ${index})">👍 SAHI</button>
+                        <button class="vote-btn" style="background:rgba(139, 233, 253, 0.15); color:var(--cyan); border: 1px solid var(--cyan);" onclick="sendSuggestion('${cat}', 'Shapar', ${index})">🤏 SHAPAR</button>
+                        <button class="vote-btn" style="background:rgba(255, 85, 85, 0.15); color:var(--red); border: 1px solid var(--red);" onclick="sendSuggestion('${cat}', 'Galat', ${index})">👎 GALAT</button>
+                    `;
+                }
+                html += `</div></div>`;
+            });
+            document.getElementById('jirgaReview').innerHTML = html;
+            document.getElementById('main-content').scrollTop = 0;
+        });
+
+        socket.on('showSuggestion', (data) => {
+            let opBox = document.getElementById(`opinions_${data.boxIndex}`);
+            if(opBox) {
+                let color = data.vote === 'Sahi' ? 'var(--green)' : data.vote === 'Shapar' ? 'var(--cyan)' : 'var(--red)';
+                let tagId = `vote_${data.boxIndex}_${data.senderId}`;
+                let tagHtml = `<span id="${tagId}" style="background:rgba(0,0,0,0.6); border:1px solid ${color}; color:${color}; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:bold;">${data.name}: ${data.vote}</span>`;
+                let existingTag = document.getElementById(tagId);
+                if (existingTag) existingTag.outerHTML = tagHtml; 
+                else opBox.innerHTML += tagHtml; 
+            }
+        });
+
+        function triggerLock(judgedId, cat, points, index) {
+            document.getElementById(`btnSahi_${index}`).disabled = true;
+            document.getElementById(`btnShapar_${index}`).disabled = true;
+            document.getElementById(`btnGalat_${index}`).disabled = true;
+            socket.emit('lockScore', { roomID: currentRoomID, judgedId: judgedId, cat: cat, points: points, boxIndex: index });
+            
+            lockedCount++;
+            if (lockedCount === currentRoundCatCount) { setTimeout(() => { socket.emit('nextJudgedPlayer', currentRoomID); }, 2000); }
+        }
+
+        socket.on('scoreLocked', (data) => {
+            let box = document.getElementById(`catBox_${data.boxIndex}`);
+            if(box) {
+                box.classList.add('locked');
+                let opBox = document.getElementById(`opinions_${data.boxIndex}`);
+                opBox.innerHTML = `<span style="background:var(--purple); color:#1e1f29; padding:4px 10px; border-radius:6px; font-size:10px; font-weight:bold;">✅ JUDGE LOCKED: ${data.points} POINTS</span>`;
+            }
+        });
+
+        socket.on('roundOver', (data) => {
+            hideAllPhases();
+            document.getElementById('waitingPhase').classList.add('active');
+            document.getElementById('waitingTitle').innerText = `WAITING ROOM (ROUND ${data.current} OF ${data.total})`;
+        });
+
+        socket.on('showWinnerScreen', (winners) => {
+            document.getElementById('main-content').classList.add('hidden');
+            document.getElementById('leaderboard').classList.add('hidden');
+            const endScreen = document.getElementById('endScreen');
+            endScreen.classList.remove('hidden');
+            
+            const podium = document.getElementById('podiumContainer');
+            const restList = document.getElementById('remainingPlayers');
+            podium.innerHTML = ''; restList.innerHTML = '';
+
+            try {
+                const vicAudio = new Audio('https://upload.wikimedia.org/wikipedia/commons/1/15/Audience_Applause.ogg');
+                vicAudio.volume = 0.6;
+                vicAudio.play().catch(e=>{});
+            } catch(err) {}
+
+            for(let i=0; i<80; i++) { setTimeout(spawnConfetti, i*30); }
+
+            const activeWinners = winners.filter(w => !w.isSpectator);
+            const lastPlaceIndex = activeWinners.length - 1;
+
+            activeWinners.forEach((p, i) => {
+                if (i < 3) {
+                    const height = i === 0 ? '140px' : i === 1 ? '100px' : '70px';
+                    const color = i === 0 ? 'gold' : i === 1 ? '#C0C0C0' : '#CD7F32';
+                    const rankLabel = i === 0 ? '1st' : i === 1 ? '2nd' : '3rd';
+                    
+                    podium.innerHTML += `
+                        <div class="podium-block" style="width:75px; height:${height}; background:linear-gradient(to top, ${p.color}40, rgba(0,0,0,0)); border:2px solid ${color};">
+                            <div style="position:absolute; top:-50px; text-align:center;">
+                                <img src="${p.avatar}" style="width:40px; filter:drop-shadow(0 5px 10px ${p.color}80);">
+                                <div style="color:white; font-weight:bold; font-size:11px; margin-top:3px;">${p.name}</div>
+                                <div style="color:${color}; font-weight:bold; font-size:11px;">${p.score}</div>
+                            </div>
+                            <span style="margin-top:auto; margin-bottom:10px; font-weight:bold; color:${color}; font-size:14px;">${rankLabel}</span>
+                        </div>
+                    `;
+                } else {
+                    const isLast = (i === lastPlaceIndex && activeWinners.length > 3);
+                    const shameClass = isLast ? 'class="shame-shake"' : '';
+                    
+                    restList.innerHTML += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid rgba(255,255,255,0.1); border-left:3px solid ${p.color}; background: rgba(0,0,0,0.2);">
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <span style="font-size:12px;">${i+1}.</span>
+                                <div ${shameClass}><img src="${p.avatar}" class="avatar-img-small"></div>
+                                <span style="${isLast ? 'color:var(--red); font-style:italic;' : 'color:white;'} font-size:12px; font-weight:bold;">${p.name} ${isLast ? '💩' : ''}</span>
+                            </div>
+                            <span style="color:${p.color}; font-weight:bold; font-size:12px;">${p.score}</span>
+                        </div>
+                    `;
+                    if (isLast) triggerShameSequence();
+                }
+            });
+
+            const endBtns = document.getElementById('endScreenBtns');
+            if (player.isHost) {
+                endBtns.innerHTML = `
+                    <button class="menu-btn primary" onclick="requestPlayAgain()" style="width:250px; margin-top:20px;">NEW GAME (SAME ROOM)</button>
+                    <button class="menu-btn" onclick="location.reload()" style="width:250px; border-color:var(--red); color:var(--red);">LEAVE ROOM</button>
+                `;
+            } else {
+                endBtns.innerHTML = `
+                    <p style="color:var(--cyan); font-style:italic; margin-top:20px;">Waiting for Host to start a new game...</p>
+                    <button class="menu-btn" onclick="location.reload()" style="width:200px; border-color:var(--red); color:var(--red); margin-top:10px;">LEAVE</button>
+                `;
+            }
+        });
+
+        function requestPlayAgain() {
+            socket.emit('requestReplay', currentRoomID);
+        }
+
+        socket.on('resetToSetup', () => {
+            isHostSettingUp = true; 
+            document.getElementById('endScreen').classList.add('hidden');
+            document.getElementById('leaderboard').classList.remove('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            document.getElementById('waitingTitle').innerText = 'WAITING ROOM';
+
+            hideAllPhases();
+
+            if(player.isHost) {
+                document.getElementById('setupPhase').classList.add('active');
+                document.getElementById('profileSetupRow').classList.add('hidden');
+                document.getElementById('hostSettingsRow').classList.remove('hidden');
+                
+                document.getElementById('firstJoinBtn').classList.add('hidden');
+                document.getElementById('updateSettingsBtn').classList.remove('hidden');
+            } else {
+                document.getElementById('waitingPhase').classList.add('active');
+            }
+        });
+
+        function saveNewSettings() {
+            selectedCats = [];
+            document.querySelectorAll('.cat-item.selected').forEach(el => selectedCats.push(el.innerText));
+            let gameRounds = parseInt(document.getElementById('roundSet').value) || 1;
+            
+            socket.emit('updateSettings', { roomID: currentRoomID, categories: selectedCats, totalRounds: gameRounds });
+        }
+
+        socket.on('settingsUpdated', (newCats) => {
+            selectedCats = newCats;
+            isHostSettingUp = false; 
+            hideAllPhases();
+            document.getElementById('waitingPhase').classList.add('active');
+        });
+
+        function spawnConfetti() {
+            const colors = ['#bd93f9', '#ff79c6', '#8be9fd', '#50fa7b', '#f1fa8c'];
+            const el = document.createElement('div'); el.className = 'confetti-3d';
+            el.style.left = Math.random() * 100 + 'vw'; el.style.top = '-10px';
+            el.style.width = Math.random() > 0.5 ? '6px' : '10px'; el.style.height = '6px';
+            el.style.background = colors[Math.floor(Math.random() * colors.length)];
+            el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+            document.body.appendChild(el); setTimeout(() => el.remove(), 3000);
+        }
+
+        function triggerShameSequence() {
+            setTimeout(() => {
+                try {
+                    const shameSnd = new Audio('https://upload.wikimedia.org/wikipedia/commons/d/d5/Sad_Trombone.ogg');
+                    shameSnd.volume = 0.6; shameSnd.play().catch(e=>{});
+                } catch(err) {}
+
+                for (let i = 0; i < 15; i++) {
+                    setTimeout(() => {
+                        const boo = document.createElement('div'); boo.className = 'boo-text'; boo.innerText = Math.random() > 0.5 ? 'BOOO!' : 'SHAME!';
+                        boo.style.left = Math.random() * 80 + 10 + "vw"; boo.style.top = Math.random() * 80 + 10 + "vh";
+                        document.body.appendChild(boo); setTimeout(() => boo.remove(), 2000);
+                    }, i * 200);
+                }
+            }, 1000);
+        }
+
+        function handleEnter(event, index) {
+            if (event.key === 'Enter') {
+                event.preventDefault(); const nextBox = document.getElementById(`ans_${index + 1}`);
+                if (nextBox) nextBox.focus(); else if (!isPanicMode && !player.isSpectator) initiatePanic(false); 
+            }
+        }
+
+        function startTimer(durationSeconds) {
+            let timeLeft = durationSeconds || 30; 
+            const display = document.getElementById('timerDisplay'); display.innerText = timeLeft + "s";
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--; display.innerText = timeLeft + "s";
+                if(timeLeft <= 0) { clearInterval(timerInterval); gatherAndSubmitAnswers(); }
+            }, 1000);
+        }
+
+        function playSirenTone(freq, duration, type, vol) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime); 
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function initiatePanic(fromServer) {
+            if (isPanicMode) return; 
+            isPanicMode = true; clearInterval(timerInterval);
+            if (!fromServer) socket.emit('triggerPanic', currentRoomID);
+
+            playSirenTone(400, 2.0, 'square', 0.05); setTimeout(()=>playSirenTone(800, 1.5, 'square', 0.05), 500);
+
+            const display = document.getElementById('timerDisplay'); display.classList.add('panic-timer');
+            if(document.getElementById('submitBtn')) document.getElementById('submitBtn').style.display = 'none';
+
+            let panicTime = 12; display.innerText = "PANIC: " + panicTime + "s";
+            timerInterval = setInterval(() => {
+                panicTime--; display.innerText = "PANIC: " + panicTime + "s";
+                if(panicTime <= 0) { clearInterval(timerInterval); display.classList.remove('panic-timer'); gatherAndSubmitAnswers(); }
+            }, 1000);
+        }
+
+        function gatherAndSubmitAnswers() {
+            if (!player.isSpectator) {
+                let myAnswers = {};
+                selectedCats.forEach((cat, index) => {
+                    let input = document.getElementById(`ans_${index}`);
+                    myAnswers[cat] = input ? input.value : "";
+                });
+                socket.emit('submitAnswers', { roomID: currentRoomID, answers: myAnswers });
+            }
+            
+            // CLEAN PHASE TRANSITION
+            hideAllPhases();
+            document.getElementById('jirgaPhase').classList.add('active');
+            document.getElementById('jirgaReview').innerHTML = `
+                <h2 style="color:var(--purple); margin-top:30px; font-size:20px;">Submitting Answers...</h2>
+                <p style="color:var(--comment); font-size:12px;">Waiting for the rest of the village to drop their pens.</p>
+            `;
+        }
+
+        socket.on('receiveMessage', (data) => {
+            const chat = document.getElementById('chat-area');
+            chat.innerHTML += `<div class="chat-msg" style="border-left-color:${data.color};"><img src="${data.avatar}" class="avatar-img-small"> <b style="color:${data.color};">${data.name}:</b> ${data.msg}</div>`;
+            chat.scrollTop = chat.scrollHeight;
+        });
+
+        function sendChat() {
+            const input = document.getElementById('chatInput');
+            if(!input.value.trim()) return;
+            socket.emit('sendMessage', { roomID: currentRoomID, name: player.name, color: player.color, avatar: player.avatar, msg: input.value });
+            const chat = document.getElementById('chat-area');
+            chat.innerHTML += `<div class="chat-msg" style="border-left-color:${player.color};"><img src="${player.avatar}" class="avatar-img-small"> <b style="color:${player.color};">${player.name}:</b> ${input.value}</div>`;
+            chat.scrollTop = chat.scrollHeight; input.value = "";
+        }
+
+        function triggerEmoji(type) {
+            socket.emit('sendEmoji', { roomID: currentRoomID, type: type });
+            renderEmojiEffect(type);
+        }
+
+        function renderEmojiEffect(type) {
+            const data = emojiAssets[type];
+            
+            const img = document.createElement('img'); 
+            img.src = data.img; 
+            img.className = 'floating-emoji';
+            img.style.left = (Math.random() * 60 + 20) + "%"; 
+            img.style.width = "60px";
+            document.body.appendChild(img); 
+            setTimeout(() => img.remove(), 2000);
+
+            try {
+                const aud = new Audio(data.snd); 
+                aud.volume = 0.5; 
+                let playPromise = aud.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => { /* Audio blocked */ });
+                }
+            } catch(e) {}
+        }
+    </script>
+</body>
+</html>
